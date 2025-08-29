@@ -54,8 +54,12 @@ async function getContainerDataDir(containerName) {
           const src = path.join(root, f);
           const dest = path.join(fallbackDir, f);
           try{ 
-            if(fs.existsSync(src) && !fs.existsSync(dest)) {
-              fs.copyFileSync(src, dest);
+            if(fs.existsSync(src)) {
+              // Always copy entrypoint.sh to ensure latest version
+              if(f === 'entrypoint.sh' || !fs.existsSync(dest)) {
+                fs.copyFileSync(src, dest);
+                console.log(`Copied ${f} to container directory`);
+              }
             }
           }catch(e){
             console.warn(`Failed to copy ${f}:`, e.message);
@@ -131,8 +135,12 @@ app.post('/api/containers', authRequired, async (req,res)=>{
       const src = path.join(root, f);
       const dest = path.join(containerDir, f);
       try{ 
-        if(fs.existsSync(src) && !fs.existsSync(dest)) {
-          fs.copyFileSync(src, dest);
+        if(fs.existsSync(src)) {
+          // Always copy entrypoint.sh to ensure latest version, others only if not exist
+          if(f === 'entrypoint.sh' || !fs.existsSync(dest)) {
+            fs.copyFileSync(src, dest);
+            console.log(`Copied ${f} to new container directory: ${containerDir}`);
+          }
         }
       }catch(e){
         console.warn(`Failed to copy ${f}:`, e.message);
