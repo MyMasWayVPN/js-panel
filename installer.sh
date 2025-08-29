@@ -284,7 +284,7 @@ function install_panel(){
   # Install backend dependencies
   log_info "Installing backend dependencies..."
   pushd "$APP_DIR/backend"
-  npm install
+  npm install --omit=dev
   if [[ $? -ne 0 ]]; then
     log_error "Failed to install backend dependencies"
     exit 1
@@ -310,7 +310,7 @@ function install_panel(){
   
   # Create systemd service
   log_info "Creating systemd service..."
-  cat >/etc/systemd/system/$SERVICE_NAME.service <<EOF
+  cat >/etc/systemd/system/js-panel.service <<EOF
 [Unit]
 Description=JS Panel Backend
 After=docker.service
@@ -318,7 +318,7 @@ Requires=docker.service
 
 [Service]
 WorkingDirectory=$APP_DIR/backend
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node $APP_DIR/backend/server.js
 Restart=always
 Environment=PORT=8080
 
