@@ -290,6 +290,23 @@ function install_panel(){
   fi
   popd
   
+  # Install and build frontend dependencies
+  log_info "Installing frontend dependencies..."
+  pushd "$APP_DIR/frontend"
+  npm install
+  if [[ $? -ne 0 ]]; then
+    log_error "Failed to install frontend dependencies"
+    exit 1
+  fi
+  
+  log_info "Building frontend..."
+  npm run build
+  if [[ $? -ne 0 ]]; then
+    log_error "Failed to build frontend"
+    exit 1
+  fi
+  popd
+  
   # Create systemd service
   log_info "Creating systemd service..."
   cat >/etc/systemd/system/$SERVICE_NAME.service <<EOF
@@ -345,6 +362,23 @@ function update_panel(){
   pushd "$APP_DIR/backend"
   npm install --production || {
     log_error "Failed to update backend dependencies"
+    popd
+    exit 1
+  }
+  popd
+  
+  # Update and rebuild frontend dependencies
+  log_info "Updating frontend dependencies..."
+  pushd "$APP_DIR/frontend"
+  npm install || {
+    log_error "Failed to update frontend dependencies"
+    popd
+    exit 1
+  }
+  
+  log_info "Rebuilding frontend..."
+  npm run build || {
+    log_error "Failed to rebuild frontend"
     popd
     exit 1
   }
@@ -416,9 +450,9 @@ function show_help() {
     echo "Usage: $0 {install|update|reinstall|uninstall|help}"
     echo ""
     echo "Commands:"
-    echo "  install    - Install JS Panel with all dependencies"
-    echo "  update     - Update existing JS Panel installation"
-    echo "  reinstall  - Completely reinstall JS Panel"
+    echo "  install    - Install JS Panel with all dependencies and build frontend"
+    echo "  update     - Update existing JS Panel installation and rebuild frontend"
+    echo "  reinstall  - Completely reinstall JS Panel with fresh build"
     echo "  uninstall  - Remove JS Panel and clean up"
     echo "  help       - Show this help message"
     echo ""
@@ -427,11 +461,14 @@ function show_help() {
     echo "  - Root privileges (run with sudo)"
     echo "  - Internet connection"
     echo ""
-    echo "The installer will automatically install:"
-    echo "  - Git"
-    echo "  - Node.js and npm"
-    echo "  - Docker"
-    echo "  - curl (if not present)"
+    echo "The installer will automatically:"
+    echo "  - Install/upgrade Git, Node.js LTS, Docker, curl"
+    echo "  - Install backend dependencies (production)"
+    echo "  - Install frontend dependencies and build React app"
+    echo "  - Create and start systemd service"
+    echo "  - Make panel immediately accessible after installation"
+    echo ""
+    echo "After installation, access the panel at: http://localhost:8080"
     echo ""
 }
 
