@@ -1,0 +1,10 @@
+:root{--bg:#0b1220;--card:#071126;--muted:#94a3b8;--accent:#7dd3fc}
+body{font-family:Inter,system-ui,Arial;background:var(--bg);color:#e6eef8}
+.topbar{display:flex;justify-content:space-between;padding:12px;background:#071726}
+.main-grid{display:grid;grid-template-columns:300px 1fr 300px;gap:12px;padding:12px}
+.left{background:#071126;padding:12px;border-radius:8px}
+.center{background:#04202b;padding:12px;border-radius:8px}
+.right{display:flex;flex-direction:column;gap:12px}
+.card{background:#0a1220;padding:8px;border-radius:6px;margin-bottom:8px}
+.console{background:#000;color:#7fff7f;padding:8px;height:320px;overflow:auto;border-radius:6px}
+input,select,button{padding:6px;margin:6px 0;width:100%}
