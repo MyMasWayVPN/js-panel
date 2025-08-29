@@ -284,7 +284,7 @@ function install_panel(){
   # Install backend dependencies
   log_info "Installing backend dependencies..."
   pushd "$APP_DIR/backend"
-  npm install --omit=dev
+  npm install
   if [[ $? -ne 0 ]]; then
     log_error "Failed to install backend dependencies"
     exit 1
