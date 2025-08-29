@@ -127,32 +127,118 @@ app.post('/api/containers', authRequired, async (req,res)=>{
     const containerDir = path.join(DATA_DIR, containerId);
     
     // Create container-specific directory
+    console.log(`Creating container directory: ${containerDir}`);
     fs.mkdirSync(containerDir, { recursive: true });
     
-    // Copy helper scripts from repo root if present in backend root (installer will place them)
+    // Copy helper scripts from repo root (installer places them in project root)
     const root = path.resolve('./');
-    ['entrypoint.sh','tunnel-on.sh','tunnel-off.sh','run.js'].forEach(f=>{
+    console.log(`Looking for helper scripts in: ${root}`);
+    
+    const requiredFiles = ['entrypoint.sh','tunnel-on.sh','tunnel-off.sh','run.js'];
+    let copiedFiles = 0;
+    
+    requiredFiles.forEach(f=>{
       const src = path.join(root, f);
       const dest = path.join(containerDir, f);
+      
+      console.log(`Checking for ${f} at: ${src}`);
+      
       try{ 
         if(fs.existsSync(src)) {
-          // Always copy entrypoint.sh to ensure latest version, others only if not exist
-          if(f === 'entrypoint.sh' || !fs.existsSync(dest)) {
-            fs.copyFileSync(src, dest);
-            console.log(`Copied ${f} to new container directory: ${containerDir}`);
+          fs.copyFileSync(src, dest);
+          console.log(`✓ Copied ${f} to container directory`);
+          copiedFiles++;
+          
+          // Make scripts executable
+          if(f.endsWith('.sh')) {
+            fs.chmodSync(dest, 0o755);
+            console.log(`✓ Made ${f} executable`);
           }
+        } else {
+          console.warn(`✗ ${f} not found at ${src}`);
         }
       }catch(e){
-        console.warn(`Failed to copy ${f}:`, e.message);
+        console.error(`✗ Failed to copy ${f}:`, e.message);
       }
     });
     
-    // Make entrypoint executable
-    try{ 
-      fs.chmodSync(path.join(containerDir,'entrypoint.sh'), 0o755); 
-    }catch(e){
-      console.warn('Failed to make entrypoint.sh executable:', e.message);
+    // Create default application files if no run.js was copied
+    if (!fs.existsSync(path.join(containerDir, 'run.js'))) {
+      console.log('Creating default application files...');
+      
+      // Create package.json
+      const packageJson = {
+        "name": "default-container-app",
+        "version": "1.0.0",
+        "main": "run.js",
+        "scripts": {
+          "start": "node run.js"
+        },
+        "dependencies": {}
+      };
+      
+      fs.writeFileSync(
+        path.join(containerDir, 'package.json'), 
+        JSON.stringify(packageJson, null, 2)
+      );
+      console.log('✓ Created package.json');
+      
+      // Create run.js - Simple console logging script
+      const runJsContent = `console.log('=========================================');
+console.log('SIMPLE CONTAINER APPLICATION STARTED');
+console.log('=========================================');
+console.log('Container ID:', process.env.CONTAINER_ID || 'unknown');
+console.log('Node.js Version:', process.version);
+console.log('Platform:', process.platform);
+console.log('Architecture:', process.arch);
+console.log('Working Directory:', process.cwd());
+console.log('Started at:', new Date().toISOString());
+console.log('=========================================');
+
+let counter = 1;
+
+// Simple interval to keep container running and show it's alive
+const interval = setInterval(() => {
+  console.log(\`[\${new Date().toISOString()}] Container is running - Message #\${counter}\`);
+  console.log(\`  - Container ID: \${process.env.CONTAINER_ID || 'unknown'}\`);
+  console.log(\`  - Uptime: \${counter * 10} seconds\`);
+  console.log(\`  - Memory Usage: \${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\`);
+  counter++;
+}, 10000); // Every 10 seconds
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('=========================================');
+  console.log('[SHUTDOWN] Received SIGTERM signal');
+  console.log('[SHUTDOWN] Cleaning up...');
+  clearInterval(interval);
+  console.log('[SHUTDOWN] Container stopped gracefully');
+  console.log('=========================================');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('=========================================');
+  console.log('[SHUTDOWN] Received SIGINT signal');
+  console.log('[SHUTDOWN] Cleaning up...');
+  clearInterval(interval);
+  console.log('[SHUTDOWN] Container stopped gracefully');
+  console.log('=========================================');
+  process.exit(0);
+});
+
+console.log('Simple container application is now running...');
+console.log('This script will print a message every 10 seconds');
+console.log('Press Ctrl+C to stop');
+`;
+      
+      fs.writeFileSync(path.join(containerDir, 'run.js'), runJsContent);
+      console.log('✓ Created run.js');
+      copiedFiles++;
     }
+    
+    console.log(`Container setup complete. Files copied: ${copiedFiles}/${requiredFiles.length + 1}`);
+    console.log(`Container directory contents:`, fs.readdirSync(containerDir));
     
     const image = "ghcr.io/pelican-eggs/yolks:nodejs_20";
     
@@ -174,6 +260,18 @@ app.post('/api/containers', authRequired, async (req,res)=>{
       });
     }
     
+    // Verify entrypoint.sh exists before creating container
+    const entrypointPath = path.join(containerDir, 'entrypoint.sh');
+    if (!fs.existsSync(entrypointPath)) {
+      throw new Error(`entrypoint.sh not found in container directory: ${containerDir}`);
+    }
+    
+    console.log('Creating Docker container with configuration:');
+    console.log(`- Name: ${name}`);
+    console.log(`- Image: ${image}`);
+    console.log(`- Mount: ${containerDir}:/home/container`);
+    console.log(`- Startup CMD: ${startupCmd || 'node run.js'}`);
+    
     const container = await docker.createContainer({
       name,
       Image: `${image}`,
@@ -189,7 +287,7 @@ app.post('/api/containers', authRequired, async (req,res)=>{
         `CF_TOKEN=${cfToken || ''}`,
         `CONTAINER_ID=${containerId}`
       ],
-      Cmd: ['bash','/entrypoint.sh'],
+      Cmd: ['bash', '/home/container/entrypoint.sh'],
       Labels: { 
         'panel.kind': 'js-panel',
         'panel.container-id': containerId,
