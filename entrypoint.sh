@@ -185,7 +185,7 @@ if [[ "$STARTUP_CMD" == *"node "* ]]; then
     fi
   fi
 fi
-
+clear
 # Final startup
 echo "[ENTRYPOINT] ================================"
 echo "[ENTRYPOINT] Ready to start application"

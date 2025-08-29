@@ -130,11 +130,11 @@ app.post('/api/containers', authRequired, async (req,res)=>{
     console.log(`Creating container directory: ${containerDir}`);
     fs.mkdirSync(containerDir, { recursive: true });
     
-    // Copy helper scripts from repo root (installer places them in project root)
-    const root = path.resolve('./');
+    // Copy helper scripts from project root (installer places them in /opt/js-panel)
+    const root = path.resolve('../'); // Go up one level from backend to project root
     console.log(`Looking for helper scripts in: ${root}`);
     
-    const requiredFiles = ['entrypoint.sh','tunnel-on.sh','tunnel-off.sh','run.js'];
+    const requiredFiles = ['entrypoint.sh', 'run.js'];
     let copiedFiles = 0;
     
     requiredFiles.forEach(f=>{
@@ -149,8 +149,8 @@ app.post('/api/containers', authRequired, async (req,res)=>{
           console.log(`✓ Copied ${f} to container directory`);
           copiedFiles++;
           
-          // Make scripts executable
-          if(f.endsWith('.sh')) {
+          // Make entrypoint.sh executable
+          if(f === 'entrypoint.sh') {
             fs.chmodSync(dest, 0o755);
             console.log(`✓ Made ${f} executable`);
           }
@@ -489,10 +489,32 @@ app.post('/api/containers/:name/files/write', authRequired, async (req,res)=>{
 app.delete('/api/containers/:name/files', authRequired, async (req,res)=>{
   try{
     const dir = await getContainerDataDir(req.params.name);
-    const p = path.join(dir, req.query.path || '');
-    fs.rmSync(p, { recursive:true, force:true });
+    const filePath = req.query.path;
+    
+    // Prevent deleting if no path specified or trying to delete root
+    if (!filePath || filePath === '.' || filePath === '/' || filePath === '') {
+      return res.status(400).json({ error: 'Cannot delete root directory or empty path' });
+    }
+    
+    const fullPath = path.join(dir, filePath);
+    
+    // Ensure the path is within the container directory (security check)
+    if (!fullPath.startsWith(dir)) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
+    // Check if file/directory exists
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File or directory not found' });
+    }
+    
+    console.log(`Deleting file/directory: ${fullPath}`);
+    fs.rmSync(fullPath, { recursive: true, force: true });
     res.json({ ok: true });
-  }catch(e){ res.status(500).json({ error: e.message }); }
+  }catch(e){ 
+    console.error('Delete file error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 // Extract archive file
@@ -611,9 +633,43 @@ wss.on('connection', async (ws, req) => {
     const url = new URL(req.url, 'http://x');
     const id = url.searchParams.get('id');
     if(!id){ ws.close(); return; }
+    
     const container = docker.getContainer(id);
-    const stream = await container.logs({ follow:true, stdout:true, stderr:true, tail:200 });
-    stream.on('data', chunk => { try{ ws.send(chunk.toString()); }catch(e){} });
-    ws.on('close', ()=> stream.destroy());
-  }catch(e){ ws.close(); }
+    const stream = await container.logs({ follow:true, stdout:true, stderr:true, tail:150 });
+    
+    let logBuffer = [];
+    const maxLines = 150;
+    
+    stream.on('data', chunk => { 
+      try{ 
+        const logData = chunk.toString();
+        const lines = logData.split('\n').filter(line => line.trim());
+        
+        // Add new lines to buffer
+        logBuffer.push(...lines);
+        
+        // Keep only last 150 lines
+        if (logBuffer.length > maxLines) {
+          logBuffer = logBuffer.slice(-maxLines);
+        }
+        
+        // Send the new log data
+        ws.send(logData);
+      }catch(e){
+        console.error('WebSocket send error:', e.message);
+      } 
+    });
+    
+    ws.on('close', ()=> {
+      try {
+        stream.destroy();
+      } catch(e) {
+        console.error('Stream destroy error:', e.message);
+      }
+    });
+    
+  }catch(e){ 
+    console.error('WebSocket connection error:', e.message);
+    ws.close(); 
+  }
 });
