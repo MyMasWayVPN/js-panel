@@ -187,6 +187,27 @@ function install_curl() {
     esac
 }
 
+function install_archive_tools() {
+    local os_type=$(detect_os)
+    log_info "Installing archive tools (zip, unzip, tar, rar)..."
+    
+    case $os_type in
+        "debian")
+            apt-get install -y zip unzip tar gzip unrar-free
+            ;;
+        "redhat")
+            yum install -y zip unzip tar gzip unrar || dnf install -y zip unzip tar gzip unrar
+            ;;
+        "arch")
+            pacman -S --noconfirm zip unzip tar gzip unrar
+            ;;
+        *)
+            log_error "Unsupported OS for automatic archive tools installation"
+            exit 1
+            ;;
+    esac
+}
+
 function check_root() {
     if [[ $EUID -ne 0 ]]; then
         log_error "This script must be run as root (use sudo)"
@@ -262,6 +283,14 @@ function check_and_install_dependencies() {
         fi
     fi
     
+    # Check and install archive tools
+    if ! command -v zip &> /dev/null || ! command -v unzip &> /dev/null; then
+        log_warn "Archive tools not found, installing..."
+        install_archive_tools
+    else
+        log_info "Archive tools are already installed"
+    fi
+    
     log_info "All dependencies are installed and ready!"
 }
 
@@ -288,6 +317,27 @@ function install_panel(){
   if [[ $? -ne 0 ]]; then
     log_error "Failed to install backend dependencies"
     exit 1
+  fi
+  
+  # Create .env file if it doesn't exist
+  if [[ ! -f ".env" ]]; then
+    log_info "Creating default .env configuration..."
+    cat > .env <<EOF
+# Panel Authentication
+PANEL_USER=admin
+PANEL_PASS=admin123
+
+# Session Configuration
+SESSION_SECRET=your-secret-key-change-this
+
+# Data Directory (where container files are stored)
+DATA_DIR=/opt/js-data
+
+# Server Port
+PORT=8080
+EOF
+    log_warn "Default credentials created: admin/admin123"
+    log_warn "Please change these credentials in $APP_DIR/backend/.env for security!"
   fi
   popd
   
@@ -366,6 +416,27 @@ function update_panel(){
     popd
     exit 1
   }
+  
+  # Ensure .env file exists after update
+  if [[ ! -f ".env" ]]; then
+    log_info "Creating default .env configuration..."
+    cat > .env <<EOF
+# Panel Authentication
+PANEL_USER=admin
+PANEL_PASS=admin123
+
+# Session Configuration
+SESSION_SECRET=your-secret-key-change-this
+
+# Data Directory (where container files are stored)
+DATA_DIR=/opt/js-data
+
+# Server Port
+PORT=8080
+EOF
+    log_warn "Default credentials created: admin/admin123"
+    log_warn "Please change these credentials in $APP_DIR/backend/.env for security!"
+  fi
   popd
   
   # Update and rebuild frontend dependencies
@@ -464,6 +535,7 @@ function show_help() {
     echo ""
     echo "The installer will automatically:"
     echo "  - Install/upgrade Git, Node.js v20 LTS, Docker, curl"
+    echo "  - Install archive tools (zip, unzip, tar, gzip, unrar)"
     echo "  - Install backend dependencies (production mode)"
     echo "  - Install frontend dependencies and build React app"
     echo "  - Create and start systemd service"
