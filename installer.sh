@@ -88,11 +88,11 @@ function install_nodejs() {
                 apt-get autoremove -y 2>/dev/null || true
             fi
             
-            # Install NodeSource repository for latest LTS Node.js
-            log_info "Adding NodeSource repository..."
-            curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+            # Install NodeSource repository for Node.js v20 LTS (more stable)
+            log_info "Adding NodeSource repository for Node.js v20 LTS..."
+            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
             
-            log_info "Installing Node.js LTS..."
+            log_info "Installing Node.js v20 LTS..."
             apt-get install -y nodejs
             ;;
         "redhat")
@@ -102,11 +102,11 @@ function install_nodejs() {
                 yum remove -y nodejs npm 2>/dev/null || dnf remove -y nodejs npm 2>/dev/null || true
             fi
             
-            # Install NodeSource repository for latest LTS Node.js
-            log_info "Adding NodeSource repository..."
-            curl -fsSL https://rpm.nodesource.com/setup_lts.x | bash -
+            # Install NodeSource repository for Node.js v20 LTS
+            log_info "Adding NodeSource repository for Node.js v20 LTS..."
+            curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
             
-            log_info "Installing Node.js LTS..."
+            log_info "Installing Node.js v20 LTS..."
             yum install -y nodejs || dnf install -y nodejs
             ;;
         "arch")
@@ -229,23 +229,24 @@ function check_and_install_dependencies() {
     
     # Check and install/upgrade Node.js and npm
     local current_node_major=$(get_nodejs_major_version)
-    local min_required_version=18  # LTS version requirement
+    local min_required_version=18  # Minimum LTS version requirement
+    local target_version=20        # Target LTS version for stability
     
     if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-        log_warn "Node.js or npm not found, installing latest LTS version..."
+        log_warn "Node.js or npm not found, installing Node.js v20 LTS..."
         install_nodejs
     elif [[ $current_node_major -lt $min_required_version ]]; then
         local current_version=$(node --version)
-        log_warn "Node.js $current_version is outdated (minimum required: v$min_required_version), upgrading to latest LTS..."
+        log_warn "Node.js $current_version is outdated (minimum required: v$min_required_version), upgrading to v20 LTS..."
+        install_nodejs
+    elif [[ $current_node_major -ne $target_version ]]; then
+        local current_version=$(node --version)
+        log_warn "Node.js $current_version detected, upgrading to v20 LTS for better compatibility..."
         install_nodejs
     else
         local node_version=$(node --version)
         local npm_version=$(npm --version)
-        log_info "Node.js $node_version and npm $npm_version meet requirements"
-        
-        # Still check if we can upgrade to latest LTS
-        log_info "Checking for Node.js updates..."
-        install_nodejs
+        log_info "Node.js $node_version and npm $npm_version are compatible"
     fi
     
     # Check and install Docker
@@ -283,7 +284,7 @@ function install_panel(){
   # Install backend dependencies
   log_info "Installing backend dependencies..."
   pushd "$APP_DIR/backend"
-  npm install --production
+  npm install --omit=dev
   if [[ $? -ne 0 ]]; then
     log_error "Failed to install backend dependencies"
     exit 1
@@ -360,7 +361,7 @@ function update_panel(){
   # Update backend dependencies
   log_info "Updating backend dependencies..."
   pushd "$APP_DIR/backend"
-  npm install --production || {
+  npm install --omit=dev || {
     log_error "Failed to update backend dependencies"
     popd
     exit 1
@@ -462,8 +463,8 @@ function show_help() {
     echo "  - Internet connection"
     echo ""
     echo "The installer will automatically:"
-    echo "  - Install/upgrade Git, Node.js LTS, Docker, curl"
-    echo "  - Install backend dependencies (production)"
+    echo "  - Install/upgrade Git, Node.js v20 LTS, Docker, curl"
+    echo "  - Install backend dependencies (production mode)"
     echo "  - Install frontend dependencies and build React app"
     echo "  - Create and start systemd service"
     echo "  - Make panel immediately accessible after installation"
